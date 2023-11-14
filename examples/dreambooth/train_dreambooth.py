@@ -977,7 +977,7 @@ def main(args):
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
-        transformers.enable_gradient_checkpointing()
+        transformer.enable_gradient_checkpointing()
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
 
@@ -1252,7 +1252,7 @@ def main(args):
 
                 # Predict the noise residual
                 model_pred = transformer(
-                    noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels
+                    noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels, added_cond_kwargs=added_cond_kwargs, return_dict=False
                 ).sample
 
                 if model_pred.shape[1] == 6:
