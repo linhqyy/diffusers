@@ -49,8 +49,7 @@ from diffusers import (
     DDPMScheduler,
     DPMSolverMultistepScheduler,
     DiffusionPipeline,
-    StableDiffusionPipeline,
-    UNet2DConditionModel,
+    PixArtAlphaPipeline,
     Transformer2DModel
 )
 from diffusers.optimization import get_scheduler
@@ -75,7 +74,7 @@ def save_model_card(
     train_text_encoder=False,
     prompt=str,
     repo_folder=None,
-    pipeline: DiffusionPipeline = None,
+    pipeline: PixArtAlphaPipeline = None,
 ):
     img_str = ""
     for i, image in enumerate(images):
@@ -88,8 +87,8 @@ license: creativeml-openrail-m
 base_model: {base_model}
 instance_prompt: {prompt}
 tags:
-- {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
-- {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
+- {'stable-diffusion' if isinstance(pipeline, PixArtAlphaPipeline) else 'if'}
+- {'stable-diffusion-diffusers' if isinstance(pipeline, PixArtAlphaPipeline) else 'if-diffusers'}
 - text-to-image
 - diffusers
 - dreambooth
@@ -135,7 +134,7 @@ def log_validation(
         text_encoder = accelerator.unwrap_model(text_encoder)
 
     # create pipeline (note: unet and vae are loaded again in float32)
-    pipeline = DiffusionPipeline.from_pretrained(
+    pipeline = PixArtAlphaPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         tokenizer=tokenizer,
         text_encoder=text_encoder,
@@ -856,7 +855,7 @@ def main(args):
                 torch_dtype = torch.float16
             elif args.prior_generation_precision == "bf16":
                 torch_dtype = torch.bfloat16
-            pipeline = DiffusionPipeline.from_pretrained(
+            pipeline = PixArtAlphaPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 safety_checker=None,
@@ -1377,7 +1376,7 @@ def main(args):
         if args.skip_save_text_encoder:
             pipeline_args["text_encoder"] = None
 
-        pipeline = DiffusionPipeline.from_pretrained(
+        pipeline = PixArtAlphaPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
             transformer=accelerator.unwrap_model(transformer),
             revision=args.revision,
