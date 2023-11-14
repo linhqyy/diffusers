@@ -92,7 +92,7 @@ class AdaLayerNormSingle(nn.Module):
         super().__init__()
 
         self.emb = CombinedTimestepSizeEmbeddings(
-            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=False
+            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=use_additional_conditions
         )
 
         self.silu = nn.SiLU()
@@ -106,10 +106,7 @@ class AdaLayerNormSingle(nn.Module):
         hidden_dtype: Optional[torch.dtype] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # No modulation happening here.
-        if added_cond_kwargs is None:
-            embedded_timestep = self.emb(timestep, batch_size=batch_size, hidden_dtype=hidden_dtype)
-        else:
-            embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
+        embedded_timestep = self.emb(timestep, **added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_dtype)
         return self.linear(self.silu(embedded_timestep)), embedded_timestep
 
 
