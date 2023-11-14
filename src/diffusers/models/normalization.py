@@ -92,7 +92,7 @@ class AdaLayerNormSingle(nn.Module):
         super().__init__()
 
         self.emb = CombinedTimestepSizeEmbeddings(
-            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=use_additional_conditions
+            embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=False
         )
 
         self.silu = nn.SiLU()
