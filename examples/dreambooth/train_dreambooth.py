@@ -47,9 +47,11 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
+    DPMSolverMultistepScheduler,
     DiffusionPipeline,
     StableDiffusionPipeline,
     UNet2DConditionModel,
+    Transformer2DModel
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
@@ -110,7 +112,7 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
 def log_validation(
     text_encoder,
     tokenizer,
-    unet,
+    transformer,
     vae,
     args,
     accelerator,
@@ -137,7 +139,7 @@ def log_validation(
         args.pretrained_model_name_or_path,
         tokenizer=tokenizer,
         text_encoder=text_encoder,
-        unet=accelerator.unwrap_model(unet),
+        transformer=accelerator.unwrap_model(transformer),
         revision=args.revision,
         torch_dtype=weight_dtype,
         **pipeline_args,
@@ -922,15 +924,15 @@ def main(args):
     else:
         vae = None
 
-    unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+    transformer = Transformer2DModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="transformer", revision=args.revision
     )
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             for model in models:
-                sub_dir = "unet" if isinstance(model, type(accelerator.unwrap_model(unet))) else "text_encoder"
+                sub_dir = "transformer" if isinstance(model, type(accelerator.unwrap_model(transformer))) else "text_encoder"
                 model.save_pretrained(os.path.join(output_dir, sub_dir))
 
                 # make sure to pop weight so that corresponding model is not saved again
@@ -947,7 +949,7 @@ def main(args):
                 model.config = load_model.config
             else:
                 # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                load_model = Transformer2DModel.from_pretrained(input_dir, subfolder="transformer")
                 model.register_to_config(**load_model.config)
 
             model.load_state_dict(load_model.state_dict())
@@ -971,12 +973,12 @@ def main(args):
                 logger.warn(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
-            unet.enable_xformers_memory_efficient_attention()
+            transformer.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
     if args.gradient_checkpointing:
-        unet.enable_gradient_checkpointing()
+        transformers.enable_gradient_checkpointing()
         if args.train_text_encoder:
             text_encoder.gradient_checkpointing_enable()
 
@@ -986,9 +988,9 @@ def main(args):
         " doing mixed precision training. copy of the weights should still be float32."
     )
 
-    if accelerator.unwrap_model(unet).dtype != torch.float32:
+    if accelerator.unwrap_model(transformer).dtype != torch.float32:
         raise ValueError(
-            f"Unet loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
+            f"Transformer loaded as datatype {accelerator.unwrap_model(transformer).dtype}. {low_precision_error_string}"
         )
 
     if args.train_text_encoder and accelerator.unwrap_model(text_encoder).dtype != torch.float32:
@@ -1022,7 +1024,7 @@ def main(args):
 
     # Optimizer creation
     params_to_optimize = (
-        itertools.chain(unet.parameters(), text_encoder.parameters()) if args.train_text_encoder else unet.parameters()
+        itertools.chain(transformer.parameters(), text_encoder.parameters()) if args.train_text_encoder else transformer.parameters()
     )
     optimizer = optimizer_class(
         params_to_optimize,
@@ -1111,12 +1113,12 @@ def main(args):
 
     # Prepare everything with our `accelerator`.
     if args.train_text_encoder:
-        unet, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, text_encoder, optimizer, train_dataloader, lr_scheduler
+        transformer, text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            transformer, text_encoder, optimizer, train_dataloader, lr_scheduler
         )
     else:
-        unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-            unet, optimizer, train_dataloader, lr_scheduler
+        transformer, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+            transformer, optimizer, train_dataloader, lr_scheduler
         )
 
     # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
@@ -1198,11 +1200,11 @@ def main(args):
     )
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        unet.train()
+        transformer.train()
         if args.train_text_encoder:
             text_encoder.train()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(unet):
+            with accelerator.accumulate(transformer):
                 pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
 
                 if vae is not None:
@@ -1241,7 +1243,7 @@ def main(args):
                         text_encoder_use_attention_mask=args.text_encoder_use_attention_mask,
                     )
 
-                if accelerator.unwrap_model(unet).config.in_channels == channels * 2:
+                if accelerator.unwrap_model(transformer).config.in_channels == channels * 2:
                     noisy_model_input = torch.cat([noisy_model_input, noisy_model_input], dim=1)
 
                 if args.class_labels_conditioning == "timesteps":
@@ -1250,7 +1252,7 @@ def main(args):
                     class_labels = None
 
                 # Predict the noise residual
-                model_pred = unet(
+                model_pred = transformer(
                     noisy_model_input, timesteps, encoder_hidden_states, class_labels=class_labels
                 ).sample
 
@@ -1301,9 +1303,9 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     params_to_clip = (
-                        itertools.chain(unet.parameters(), text_encoder.parameters())
+                        itertools.chain(transformer.parameters(), text_encoder.parameters())
                         if args.train_text_encoder
-                        else unet.parameters()
+                        else transformer.parameters()
                     )
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
@@ -1347,7 +1349,7 @@ def main(args):
                         images = log_validation(
                             text_encoder,
                             tokenizer,
-                            unet,
+                            transformer,
                             vae,
                             args,
                             accelerator,
@@ -1377,7 +1379,7 @@ def main(args):
 
         pipeline = DiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            unet=accelerator.unwrap_model(unet),
+            transformer=accelerator.unwrap_model(transformer),
             revision=args.revision,
             **pipeline_args,
         )
