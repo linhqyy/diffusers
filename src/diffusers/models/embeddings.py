@@ -755,7 +755,7 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
         size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
         return size_emb
 
-    def forward(self, timestep, resolution: Optional[torch.Tensor], aspect_ratio: Optional[torch.Tensor], batch_size, hidden_dtype):
+    def forward(self, timestep, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
         if self.use_additional_conditions:
