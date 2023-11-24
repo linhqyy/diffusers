@@ -584,6 +584,7 @@ def collate_fn(examples, with_prior_preservation=False):
         input_ids += [example["class_prompt_ids"] for example in examples]
         pixel_values += [example["class_images"] for example in examples]
         if has_attention_mask:
+            attention_mask = torch.cat(attention_mask, dim=0)
             attention_mask += [example["class_attention_mask"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
